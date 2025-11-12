@@ -1,12 +1,12 @@
 use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
+use rust_kzg_blst::eip_4844::load_trusted_setup_rust;
 use rust_kzg_blst::eip_7594::BlstBackend;
 use kzg_traits::{EcBackend, DAS};
 use kzg_traits::eth;
 
 fn main() {
-    // 1. 加载 trusted setup (Rust 原生方法)
-    let mut settings = FsKZGSettings::from_file("trusted_setup.txt")
-        .expect("failed to load trusted setup");
+    // 1. 加载 trusted setup (纯 Rust)
+    let mut settings = unsafe { load_trusted_setup_rust("trusted_setup.txt").unwrap() };
 
     // 2. 创建一个示例 blob
     let blob = vec![0u8; eth::BYTES_PER_BLOB];
