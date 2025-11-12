@@ -2,6 +2,7 @@
 name = "rust_kzg_node"
 version = "0.1.0"
 edition = "2021"
+description = "High-performance KZG library bridge for Node.js using rust-kzg-blst."
 
 [lib]
 crate-type = ["cdylib"]

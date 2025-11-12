@@ -1,18 +1,21 @@
 use napi_derive::napi;
 use napi::{bindgen_prelude::*, Error, Status};
 use tokio::task;
-use std::slice;
 
-// 核心修正：使用 C FFI 公共接口名称，并修正类型路径
-// 类型修正：使用最可能在 types 模块下直接 re-export 的路径
-use rust_kzg_blst::types::{Blob, FsKZGSettings, KzgProof};
-
-// 函数修正：使用 C FFI 公共函数 (无 _rust 后缀)，这些函数需要 c_bindings feature 暴露
+// --- 核心修正：导入路径和类型 ---
+// 显式导入 C FFI 函数
 use rust_kzg_blst::eip_4844::load_trusted_setup;
 use rust_kzg_blst::eip_7594::compute_cell_kzg_proofs;
-use rust_kzg_blst::types::C_KZG_RET;
-use rust_kzg_blst::consts::{BYTES_PER_G1_POINT, BYTES_PER_G2_POINT};
 
+// 显式导入类型，解决所有 E0432 错误
+use rust_kzg_blst::types::blob::Blob;
+use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
+use rust_kzg_blst::types::proof::KzgProof;
+use rust_kzg_blst::types::c_kzg_ret::C_KZG_RET; // 修正 C_KZG_RET 路径
+use rust_kzg_blst::types::consts::{
+    BYTES_PER_G1_POINT,
+    BYTES_PER_G2_POINT
+};
 
 use rayon::prelude::*;
 use hex::encode;
@@ -30,7 +33,7 @@ fn proof_to_hex(proof: &KzgProof) -> String {
 
 // 帮助函数：将 C_KZG_RET 转换为 Result
 fn check_c_kzg_ret(ret: C_KZG_RET, context: &str) -> Result<()> {
-    // 0 is C_KZG_RET::C_KZG_OK
+    // C_KZG_RET::C_KZG_OK 总是 0
     if ret as u32 == 0 {
         Ok(())
     } else {
@@ -41,13 +44,16 @@ fn check_c_kzg_ret(ret: C_KZG_RET, context: &str) -> Result<()> {
 #[napi]
 impl KzgWrapper {
     // Factory 函数用于从 Node.js 加载可信设置
-    // 必须使用 unsafe 调用 C FFI 函数
     #[napi(factory)]
     pub fn load_trusted_setup(
         g1_monomial_bytes: Uint8Array,
         g1_lagrange_bytes: Uint8Array,
         g2_monomial_bytes: Uint8Array,
     ) -> Result<Self> {
+
+        let num_g1_monomial = g1_monomial_bytes.len() / BYTES_PER_G1_POINT;
+        let num_g2_monomial = g2_monomial_bytes.len() / BYTES_PER_G2_POINT;
+
         if g1_monomial_bytes.len() % BYTES_PER_G1_POINT != 0 ||
             g2_monomial_bytes.len() % BYTES_PER_G2_POINT != 0 {
             return Err(Error::new(Status::InvalidArg, "G1或G2点字节长度错误"));
@@ -55,14 +61,17 @@ impl KzgWrapper {
 
         let mut settings = FsKZGSettings::default();
 
+        // --- 核心修正：load_trusted_setup 的 C FFI 签名需要 8 个参数 ---
         let ret = unsafe {
             load_trusted_setup(
-                g1_monomial_bytes.as_ptr(),
-                g1_lagrange_bytes.as_ptr(),
-                g2_monomial_bytes.as_ptr(),
-                g1_monomial_bytes.len() / BYTES_PER_G1_POINT,
-                g2_monomial_bytes.len() / BYTES_PER_G2_POINT,
-                &mut settings
+                g1_monomial_bytes.as_ptr(), // 1. g1_monomial_ptr
+                num_g1_monomial as u64,     // 2. num_g1_monomial
+                g1_lagrange_bytes.as_ptr(), // 3. g1_lagrange_ptr
+                num_g1_monomial as u64,     // 4. num_g1_lagrange
+                g2_monomial_bytes.as_ptr(), // 5. g2_monomial_ptr
+                num_g2_monomial as u64,     // 6. num_g2_monomial
+                &mut settings,              // 7. &mut settings output
+                num_g2_monomial as u64      // 8. num_g2_lagrange
             )
         };
 
@@ -77,10 +86,10 @@ impl KzgWrapper {
         let blob = Blob::from_bytes(&blob_bytes)
             .map_err(|e| Error::new(Status::GenericFailure, format!("Blob 转换失败: {:?}", e)))?;
 
-        let cell_count = 32; // EIP-7594: 32 cells per blob
+        let cell_count = 32;
         let mut proofs: Vec<KzgProof> = vec![KzgProof::default(); cell_count];
 
-        // 必须使用 unsafe 调用 C FFI 函数
+        // C FFI 签名: (proofs_ptr, blob_ptr, settings_ptr)
         let ret = unsafe {
             compute_cell_kzg_proofs(
                 proofs.as_mut_ptr(),
@@ -91,7 +100,6 @@ impl KzgWrapper {
 
         check_c_kzg_ret(ret, "生成 proofs")?;
 
-        // 将生成的 proof 转换为 Vec<String>
         Ok(proofs.iter().map(proof_to_hex).collect())
     }
 
@@ -116,7 +124,7 @@ impl KzgWrapper {
                 .map(|blob| {
                     let mut proofs: Vec<KzgProof> = vec![KzgProof::default(); cell_count];
 
-                    // 必须使用 unsafe 调用 C FFI 函数
+                    // C FFI 签名: (proofs_ptr, blob_ptr, settings_ptr)
                     let ret = unsafe {
                         compute_cell_kzg_proofs(
                             proofs.as_mut_ptr(),
@@ -125,7 +133,6 @@ impl KzgWrapper {
                         )
                     };
 
-                    // 处理 C FFI 错误码
                     check_c_kzg_ret(ret, "生成 proofs 批量处理")?;
 
                     Ok(proofs.iter().map(proof_to_hex).collect())
