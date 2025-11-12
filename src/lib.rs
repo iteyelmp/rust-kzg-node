@@ -1,24 +1,22 @@
 use napi_derive::napi;
 use napi::{bindgen_prelude::*, Error, Status};
 use tokio::task;
+use std::ptr; // 引入用于 FFI 的空指针
 
 // --- 核心修正：导入策略 ---
-// 1. C FFI 函数名修正 (修复 E0432: eip_7594)
+// 修正 E0432：由于 `types::*` 路径在 C FFI 模式下不稳定，尝试从 `rust_kzg_blst` 根目录直接导入所有必要符号。
 use rust_kzg_blst::eip_4844::load_trusted_setup;
-use rust_kzg_blst::eip_7594::compute_cells_and_kzg_proofs; // 修正函数名
+use rust_kzg_blst::eip_7594::compute_cells_and_kzg_proofs;
 
-// 2. 修正类型和常量导入路径 (c_bindings 模块不可见，退回到显式内部路径)
-// 解决了所有 E0432 错误
-use rust_kzg_blst::types::blob::Blob;
-use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
-use rust_kzg_blst::types::proof::KzgProof;
-use rust_kzg_blst::types::c_kzg_ret::C_KZG_RET;
-use rust_kzg_blst::types::consts::{
+// 导入所有类型和常量。如果 `types::*` 失败，通常它们会被提升到 crate 根目录。
+use rust_kzg_blst::{
+    Blob, FsKZGSettings, KzgProof, C_KZG_RET,
     BYTES_PER_G1_POINT, BYTES_PER_G2_POINT
 };
 
 use rayon::prelude::*;
 use hex::encode;
+
 
 // 定义在 Rust 侧保存可信设置的结构体
 #[napi]
@@ -52,6 +50,8 @@ impl KzgWrapper {
         g2_monomial_bytes: Uint8Array,
     ) -> Result<Self> {
 
+        // 修正 E0308：我们坚持使用 C-ABI 要求的 8 参数签名。
+
         let num_g1_monomial = g1_monomial_bytes.len() / BYTES_PER_G1_POINT;
         let num_g2_monomial = g2_monomial_bytes.len() / BYTES_PER_G2_POINT;
 
@@ -62,8 +62,6 @@ impl KzgWrapper {
 
         let mut settings = FsKZGSettings::default();
 
-        // --- 修正 E0308 错误：确保参数数量和类型与 8 参数 C FFI 签名严格一致 ---
-        // (g1_monomial_ptr, n1, g1_lagrange_ptr, n2, g2_monomial_ptr, n3, settings_out_ptr, n4)
         let ret = unsafe {
             load_trusted_setup(
                 g1_monomial_bytes.as_ptr(), // 1. g1_monomial_ptr
@@ -91,13 +89,14 @@ impl KzgWrapper {
         let cell_count = 32;
         let mut proofs: Vec<KzgProof> = vec![KzgProof::default(); cell_count];
 
-        // 使用修正后的函数名
-        // C FFI 签名: (proofs_ptr, blob_ptr, settings_ptr)
+        // --- 修正 E0061/E0308：该 C FFI 函数需要 4 个参数 (proofs_out, blob_in, cells_out_or_null, settings_in) ---
         let ret = unsafe {
+            // 我们不需要 cells 结果，因此传入 null_mut()
             compute_cells_and_kzg_proofs(
-                proofs.as_mut_ptr(),
-                blob.as_ref().as_ptr(),
-                &self.settings
+                proofs.as_mut_ptr(),                // 1. proofs_out
+                blob.as_ref().as_ptr(),             // 2. blob_in
+                ptr::null_mut(),                    // 3. cells_out_or_null (不需要 cells 数据，传入空指针)
+                &self.settings,                     // 4. settings_in
             )
         };
 
@@ -127,13 +126,13 @@ impl KzgWrapper {
                 .map(|blob| {
                     let mut proofs: Vec<KzgProof> = vec![KzgProof::default(); cell_count];
 
-                    // 使用修正后的函数名
-                    // C FFI 签名: (proofs_ptr, blob_ptr, settings_ptr)
+                    // --- 修正 E0061/E0308：该 C FFI 函数需要 4 个参数 ---
                     let ret = unsafe {
                         compute_cells_and_kzg_proofs(
                             proofs.as_mut_ptr(),
                             blob.as_ref().as_ptr(),
-                            &settings
+                            ptr::null_mut(), // cells_out_or_null
+                            &settings,
                         )
                     };
 
