@@ -2,19 +2,16 @@ use napi_derive::napi;
 use napi::{bindgen_prelude::*, Error, Status};
 use tokio::task;
 
-// --- 核心修正：导入路径和类型 ---
-// 显式导入 C FFI 函数
+// --- 核心修正：导入策略 ---
+// 1. 直接导入 C FFI 函数 (它们通常在 eip_4844 和 eip_7594 模块的顶层)
 use rust_kzg_blst::eip_4844::load_trusted_setup;
 use rust_kzg_blst::eip_7594::compute_cell_kzg_proofs;
 
-// 显式导入类型，解决所有 E0432 错误
-use rust_kzg_blst::types::blob::Blob;
-use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
-use rust_kzg_blst::types::proof::KzgProof;
-use rust_kzg_blst::types::c_kzg_ret::C_KZG_RET; // 修正 C_KZG_RET 路径
-use rust_kzg_blst::types::consts::{
-    BYTES_PER_G1_POINT,
-    BYTES_PER_G2_POINT
+// 2. 将所有 C FFI 相关的类型、常量和返回码从 `c_bindings` 模块导入
+// 这是解决 E0432 错误的必要措施，因为这些符号未被正确地 re-export 到 types 模块
+use rust_kzg_blst::c_bindings::{
+    Blob, FsKZGSettings, KzgProof, C_KZG_RET,
+    BYTES_PER_G1_POINT, BYTES_PER_G2_POINT,
 };
 
 use rayon::prelude::*;
@@ -28,6 +25,7 @@ pub struct KzgWrapper {
 
 // 帮助函数：将 KzgProof 转换为 hex 字符串
 fn proof_to_hex(proof: &KzgProof) -> String {
+    // KzgProof::to_bytes() is a method on the type
     encode(proof.to_bytes())
 }
 
@@ -61,17 +59,18 @@ impl KzgWrapper {
 
         let mut settings = FsKZGSettings::default();
 
-        // --- 核心修正：load_trusted_setup 的 C FFI 签名需要 8 个参数 ---
+        // --- 修正 E0308 错误：采用已知的 8 参数 C FFI 签名 ---
+        // 传递三个可信设置字节数组和各自的长度，并让 settings_out 接收结果
         let ret = unsafe {
             load_trusted_setup(
                 g1_monomial_bytes.as_ptr(), // 1. g1_monomial_ptr
                 num_g1_monomial as u64,     // 2. num_g1_monomial
                 g1_lagrange_bytes.as_ptr(), // 3. g1_lagrange_ptr
-                num_g1_monomial as u64,     // 4. num_g1_lagrange
+                num_g1_monomial as u64,     // 4. num_g1_lagrange (与 g1_monomial 数量相同)
                 g2_monomial_bytes.as_ptr(), // 5. g2_monomial_ptr
                 num_g2_monomial as u64,     // 6. num_g2_monomial
                 &mut settings,              // 7. &mut settings output
-                num_g2_monomial as u64      // 8. num_g2_lagrange
+                num_g2_monomial as u64      // 8. num_g2_lagrange (与 g2_monomial 数量相同)
             )
         };
 
