@@ -2,39 +2,40 @@ use napi_derive::napi;
 use napi::{bindgen_prelude::*, Error, Status};
 use tokio::task;
 
-use rust_kzg_blst::{
-    eip_4844::{
-        load_trusted_setup, // 公共加载函数 (无 _rust 后缀)
-        Blob,               // Blob 类型
-    },
-    eip_7594::compute_cell_kzg_proofs, // 公共 Cell Proofs 函数 (无 _rust 后缀)
-    types::FsKZGSettings, // KZG 设置类型
-    types::KzgProof, // KzgProof 类型用于返回的 proof 字节
-};
+// 核心修正：使用 rust_kzg_blst 的公共 API，并修正导入路径
+use rust_kzg_blst::eip_4844::load_trusted_setup_rust; // 修正：使用纯 Rust API 版本
+use rust_kzg_blst::eip_7594::compute_cell_kzg_proofs_rust; // 修正：使用纯 Rust API 版本
+
+// 修正类型导入的路径 (它们通常不是顶层模块的直接 re-export)
+use rust_kzg_blst::types::blob::Blob; // 修正：Blob 类型通常在 types::blob 模块下
+use rust_kzg_blst::types::kzg_settings::FsKZGSettings; // 修正：FsKZGSettings 类型
+use rust_kzg_blst::types::proof::KzgProof; // 修正：KzgProof 类型
 
 use rayon::prelude::*;
 use hex::encode;
 
+// 定义在 Rust 侧保存可信设置的结构体
 #[napi]
 pub struct KzgWrapper {
     settings: FsKZGSettings,
 }
 
-// 帮助函数：将 Vec<u8> 转换为 hex 字符串
+// 帮助函数：将 KzgProof 转换为 hex 字符串
 fn proof_to_hex(proof: &KzgProof) -> String {
     encode(proof.to_bytes())
 }
 
 #[napi]
 impl KzgWrapper {
-    /// 加载可信设置（输入：三个 JsUint8Array）
+    // Factory 函数用于从 Node.js 加载可信设置
     #[napi(factory)]
     pub fn load_trusted_setup(
         g1_monomial: Uint8Array,
         g1_lagrange: Uint8Array,
         g2_monomial: Uint8Array,
     ) -> Result<Self> {
-        let settings = load_trusted_setup(
+        // 使用修正后的函数名 load_trusted_setup_rust
+        let settings = load_trusted_setup_rust(
             &g1_monomial,
             &g1_lagrange,
             &g2_monomial,
@@ -43,14 +44,14 @@ impl KzgWrapper {
         Ok(Self { settings })
     }
 
-    // 单个 Blob 的 Cell Proofs 生成（CPU 密集型，但在异步批处理中会更好）
+    // 单个 Blob 的 Cell Proofs 生成
     #[napi]
     pub fn compute_cell_proofs(&self, blob_bytes: Uint8Array) -> Result<Vec<String>> {
         let blob = Blob::from_bytes(&blob_bytes)
             .map_err(|e| Error::new(Status::GenericFailure, format!("Blob 转换失败: {:?}", e)))?;
 
-        // 使用公共函数 compute_cell_kzg_proofs
-        let proofs = compute_cell_kzg_proofs(&self.settings, &blob)
+        // 使用修正后的函数名 compute_cell_kzg_proofs_rust
+        let proofs = compute_cell_kzg_proofs_rust(&self.settings, &blob)
             .map_err(|e| Error::new(Status::GenericFailure, format!("生成 proofs 失败: {:?}", e)))?;
 
         Ok(proofs.iter().map(proof_to_hex).collect())
@@ -66,6 +67,7 @@ impl KzgWrapper {
         let handle = task::spawn_blocking(move || {
             // 1. 将所有 Uint8Array 转换为 Blob
             let blobs: Result<Vec<Blob>> = blobs_bytes.into_iter()
+                // Uint8Array 实现了 Deref<Target = [u8]>，可以直接传递给 from_bytes
                 .map(|b| Blob::from_bytes(&b).map_err(|e| Error::new(Status::GenericFailure, format!("Blob 转换失败: {:?}", e))))
                 .collect();
 
@@ -74,8 +76,8 @@ impl KzgWrapper {
             // 2. 使用 rayon 并行处理所有 Blobs
             let results: Vec<Vec<String>> = blobs.par_iter()
                 .map(|blob| {
-                    // 使用公共函数 compute_cell_kzg_proofs
-                    let proofs = compute_cell_kzg_proofs(&settings, blob)
+                    // 使用修正后的函数名 compute_cell_kzg_proofs_rust
+                    let proofs = compute_cell_kzg_proofs_rust(&settings, blob)
                         .map_err(|e| Error::new(Status::GenericFailure, format!("生成 proofs 失败: {:?}", e)))?;
 
                     Ok(proofs.iter().map(proof_to_hex).collect())
