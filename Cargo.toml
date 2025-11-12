@@ -7,9 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "3.1.1" }
+napi = { version = "3.1.1", features = ["tokio_rt"] }
 napi-derive = "3.1.1"
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["parallel"] }
+tokio = { version = "1.25", features = ["macros", "rt-multi-thread"] }
 rayon = "1.7"
 hex = "0.4"
 
