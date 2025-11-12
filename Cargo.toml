@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3.1.1" }
 napi-derive = "3.1.1"
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "blst", features = ["parallel"] }
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["parallel"] }
 rayon = "1.7"
 hex = "0.4"
 
