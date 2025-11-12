@@ -1,7 +1,9 @@
-use kzg::DAS;
-use kzg::EcBackend;
-use rust_kzg_blst::BlstBackend;
-use rust_kzg_blst::FsKZGSettings;
+use kzg_traits::DAS;        // trait for compute_cells_and_kzg_proofs
+use kzg_traits::EcBackend;  // trait for backend
+use rust_kzg_blst::BlstBackend;  // backend 类型
+use rust_kzg_blst::FsKZGSettings; // KZGSettings 实现
+
+use kzg_traits::eth;        // CELLS_PER_EXT_BLOB 等常量
 
 fn main() {
     // 假设你有一个 trusted setup 文件
