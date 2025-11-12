@@ -7,8 +7,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2" }
-napi-derive = "2"
+napi = { version = "3.1.1" }
+napi-derive = "3.1.1"
 rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["parallel"] }
 rayon = "1.7"
 hex = "0.4"
+
+[build-dependencies]
+napi-build = "1.0.1"
