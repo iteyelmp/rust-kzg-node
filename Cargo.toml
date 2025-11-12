@@ -1,0 +1,14 @@
+[package]
+name = "rust_kzg_node"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["tokio-runtime"] }
+napi-derive = "2"
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["parallel"] }
+rayon = "1.7"
+hex = "0.4"
