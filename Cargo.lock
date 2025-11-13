@@ -327,12 +327,15 @@ source = "git+https://github.com/grandinetech/rust-kzg#c911ef2ab26af602073b3f039
 dependencies = [
  "arbitrary",
  "hashbrown",
- "num_cpus",
- "rayon",
  "sha2",
  "siphasher",
- "threadpool",
 ]
+
+[[package]]
+name = "lazy_static"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
@@ -553,7 +556,6 @@ dependencies = [
  "libc",
  "once_cell",
  "rand",
- "rayon",
  "smallvec",
 ]
 
@@ -562,6 +564,8 @@ name = "rust_kzg_node"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "kzg",
+ "lazy_static",
  "napi",
  "napi-build 1.2.1",
  "napi-derive",

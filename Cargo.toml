@@ -8,13 +8,14 @@ description = "High-performance KZG library bridge for Node.js using rust-kzg-bl
 crate-type = ["cdylib"]
 
 [dependencies]
+rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["std", "c_bindings"] }
+kzg = { git = "https://github.com/grandinetech/rust-kzg", package = "kzg" }
 napi = { version = "3.1.1", features = ["tokio_rt"] }
 napi-derive = "3.1.1"
-rust-kzg-blst = { git = "https://github.com/grandinetech/rust-kzg", package = "rust-kzg-blst", features = ["parallel"] }
-kzg_traits = { git = "https://github.com/grandinetech/rust-kzg.git", package = "kzg" }
 tokio = { version = "1.25", features = ["macros", "rt-multi-thread"] }
 rayon = "1.7"
 hex = "0.4"
+lazy_static = "1.4"
 
 [build-dependencies]
 napi-build = "1.0.1"
